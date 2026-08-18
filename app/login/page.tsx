@@ -24,8 +24,8 @@ export default function LoginPage() {
         <Image
           src="/logo_zona.png"
           alt="Zona Ingeniería"
-          width={340}
-          height={220}
+          width={600}
+          height={400}
           className="mb-8 w-72 md:w-80"
         />
 
