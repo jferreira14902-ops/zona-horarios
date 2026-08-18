@@ -16,6 +16,16 @@ type OpcionFecha = {
   label: string;
 };
 
+type JornadaHistorial = {
+  id: string;
+  fecha: string;
+  entrada: string | null;
+  inicio_descanso: string | null;
+  fin_descanso: string | null;
+  salida: string | null;
+  estado: string;
+};
+
 export default function DashboardPage() {
   const opcionesFecha = useMemo(
     () => obtenerUltimosTresDiasHabiles(),
@@ -44,8 +54,13 @@ export default function DashboardPage() {
       )
     );
 
+  const [historial, setHistorial] =
+    useState<JornadaHistorial[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [cargandoJornada, setCargandoJornada] =
+    useState(false);
+  const [cargandoHistorial, setCargandoHistorial] =
     useState(false);
   const [guardando, setGuardando] = useState(false);
 
@@ -62,9 +77,14 @@ export default function DashboardPage() {
     }
   }, [fechaSeleccionada, empleado]);
 
+  useEffect(() => {
+    if (empleado) {
+      cargarHistorial();
+    }
+  }, [empleado]);
+
   function obtenerUltimosTresDiasHabiles(): OpcionFecha[] {
     const fechas: OpcionFecha[] = [];
-
     const fecha = new Date();
 
     while (fechas.length < 3) {
@@ -155,6 +175,66 @@ export default function DashboardPage() {
     return "17:30";
   }
 
+  function formatearFecha(fecha: string) {
+    const [year, month, day] = fecha.split("-");
+
+    return `${day}/${month}/${year}`;
+  }
+
+  function horaCorta(valor: string | null) {
+    if (!valor) return "-";
+    return valor.slice(0, 5);
+  }
+
+  function nombreEstado(estado: string) {
+    if (estado === "trabajado") return "Trabajado";
+    if (estado === "falto") return "Faltó";
+    if (estado === "lluvia") {
+      return "Suspendido por lluvia";
+    }
+
+    return estado;
+  }
+
+  function calcularHoras(jornada: JornadaHistorial) {
+    if (
+      jornada.estado !== "trabajado" ||
+      !jornada.entrada ||
+      !jornada.salida
+    ) {
+      return "-";
+    }
+
+    function minutos(hora: string) {
+      const [h, m] = hora
+        .slice(0, 5)
+        .split(":")
+        .map(Number);
+
+      return h * 60 + m;
+    }
+
+    let total =
+      minutos(jornada.salida) -
+      minutos(jornada.entrada);
+
+    if (
+      jornada.inicio_descanso &&
+      jornada.fin_descanso
+    ) {
+      total -=
+        minutos(jornada.fin_descanso) -
+        minutos(jornada.inicio_descanso);
+    }
+
+    if (total < 0) return "-";
+
+    const horas = Math.floor(total / 60);
+    const mins = total % 60;
+
+    return `${horas}:${String(mins).padStart(2, "0")}`;
+  }
+
   async function cargarEmpleado() {
     setLoading(true);
     setError("");
@@ -239,6 +319,29 @@ export default function DashboardPage() {
     setCargandoJornada(false);
   }
 
+  async function cargarHistorial() {
+    if (!empleado) return;
+
+    setCargandoHistorial(true);
+
+    const { data, error } = await supabase
+      .from("jornadas")
+      .select(
+        "id, fecha, entrada, inicio_descanso, fin_descanso, salida, estado"
+      )
+      .eq("empleado_id", empleado.id)
+      .order("fecha", { ascending: false })
+      .limit(5);
+
+    if (error) {
+      console.error("ERROR HISTORIAL:", error);
+    } else {
+      setHistorial((data ?? []) as JornadaHistorial[]);
+    }
+
+    setCargandoHistorial(false);
+  }
+
   async function guardarJornada() {
     if (!empleado) return;
 
@@ -296,6 +399,9 @@ export default function DashboardPage() {
     }
 
     setMensaje("Jornada guardada correctamente.");
+
+    await cargarHistorial();
+
     setGuardando(false);
   }
 
@@ -496,6 +602,79 @@ export default function DashboardPage() {
                   : "Guardar jornada"}
               </button>
             </>
+          )}
+        </div>
+
+        {/* HISTORIAL */}
+        <div className="mt-6 rounded-xl border bg-white p-6 shadow-sm">
+          <div className="mb-4">
+            <h3 className="text-xl font-bold">
+              Mis últimas jornadas
+            </h3>
+
+            <p className="mt-1 text-sm text-gray-500">
+              Tus últimos 5 registros
+            </p>
+          </div>
+
+          {cargandoHistorial ? (
+            <p className="text-gray-500">
+              Cargando historial...
+            </p>
+          ) : historial.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              Todavía no tenés jornadas registradas.
+            </p>
+          ) : (
+            <div className="divide-y">
+              {historial.map((jornada) => (
+                <div
+                  key={jornada.id}
+                  className="py-4 first:pt-0 last:pb-0"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-semibold">
+                        {formatearFecha(jornada.fecha)}
+                      </p>
+
+                      <p className="mt-1 text-sm text-gray-500">
+                        {nombreEstado(jornada.estado)}
+                      </p>
+                    </div>
+
+                    <div className="text-right">
+                      {jornada.estado === "trabajado" && (
+                        <>
+                          <p className="text-sm font-medium">
+                            {horaCorta(jornada.entrada)}
+                            {" - "}
+                            {horaCorta(jornada.salida)}
+                          </p>
+
+                          <p className="mt-1 text-sm text-gray-500">
+                            {calcularHoras(jornada)} h
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {jornada.estado === "trabajado" && (
+                    <p className="mt-2 text-xs text-gray-400">
+                      Descanso:{" "}
+                      {horaCorta(
+                        jornada.inicio_descanso
+                      )}{" "}
+                      -{" "}
+                      {horaCorta(
+                        jornada.fin_descanso
+                      )}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>
