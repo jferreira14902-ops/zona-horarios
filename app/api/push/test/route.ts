@@ -23,7 +23,14 @@ export async function GET() {
     const { data: subscriptions, error } =
       await supabaseAdmin
         .from("push_subscriptions")
-        .select("endpoint, p256dh, auth");
+        .select(`
+          endpoint,
+          p256dh,
+          auth,
+          empleados (
+            nombre
+          )
+        `);
 
     if (error) {
       return NextResponse.json(
@@ -39,15 +46,21 @@ export async function GET() {
       );
     }
 
-    const payload = JSON.stringify({
-      title: "Zona Horarios",
-      body: "Prueba de notificaciones funcionando correctamente.",
-      url: "/dashboard",
-    });
-
     const resultados = await Promise.allSettled(
-      subscriptions.map((sub) =>
-        webpush.sendNotification(
+      subscriptions.map(async (sub: any) => {
+        const nombre =
+          sub.empleados?.nombre ?? "Empleado";
+
+        const payload = JSON.stringify({
+          title: "⏰ Recordatorio",
+          body:
+            `Hola, ${nombre} 👋\n` +
+            "Todavía no registraste tu jornada de hoy.\n\n" +
+            "Tocá para completarla.",
+          url: "/dashboard",
+        });
+
+        return webpush.sendNotification(
           {
             endpoint: sub.endpoint,
             keys: {
@@ -56,8 +69,8 @@ export async function GET() {
             },
           },
           payload
-        )
-      )
+        );
+      })
     );
 
     return NextResponse.json({
