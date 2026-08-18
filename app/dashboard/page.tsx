@@ -47,12 +47,11 @@ export default function DashboardPage() {
   const [finDescanso, setFinDescanso] =
     useState("13:00");
 
-  const [salida, setSalida] =
-    useState(
-      obtenerSalidaPredeterminada(
-        opcionesFecha[0].value
-      )
-    );
+  const [salida, setSalida] = useState(
+    obtenerSalidaPredeterminada(
+      opcionesFecha[0].value
+    )
+  );
 
   const [historial, setHistorial] =
     useState<JornadaHistorial[]>([]);
@@ -63,6 +62,15 @@ export default function DashboardPage() {
   const [cargandoHistorial, setCargandoHistorial] =
     useState(false);
   const [guardando, setGuardando] = useState(false);
+
+  const [notificacionesSoportadas, setNotificacionesSoportadas] =
+    useState(false);
+  const [notificacionesActivas, setNotificacionesActivas] =
+    useState(false);
+  const [activandoNotificaciones, setActivandoNotificaciones] =
+    useState(false);
+  const [mensajeNotificaciones, setMensajeNotificaciones] =
+    useState("");
 
   const [mensaje, setMensaje] = useState("");
   const [error, setError] = useState("");
@@ -80,6 +88,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (empleado) {
       cargarHistorial();
+      comprobarNotificaciones();
     }
   }, [empleado]);
 
@@ -116,6 +125,7 @@ export default function DashboardPage() {
     const month = String(
       fecha.getMonth() + 1
     ).padStart(2, "0");
+
     const day = String(
       fecha.getDate()
     ).padStart(2, "0");
@@ -189,6 +199,7 @@ export default function DashboardPage() {
   function nombreEstado(estado: string) {
     if (estado === "trabajado") return "Trabajado";
     if (estado === "falto") return "Faltó";
+
     if (estado === "lluvia") {
       return "Suspendido por lluvia";
     }
@@ -233,6 +244,25 @@ export default function DashboardPage() {
     const mins = total % 60;
 
     return `${horas}:${String(mins).padStart(2, "0")}`;
+  }
+
+  function urlBase64AUint8Array(base64String: string) {
+    const padding =
+      "=".repeat((4 - (base64String.length % 4)) % 4);
+
+    const base64 = (
+      base64String + padding
+    )
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+
+    const rawData = window.atob(base64);
+
+    return Uint8Array.from(
+      [...rawData].map((char) =>
+        char.charCodeAt(0)
+      )
+    );
   }
 
   async function cargarEmpleado() {
@@ -313,7 +343,9 @@ export default function DashboardPage() {
       setEstado("trabajado");
       setInicioDescanso("12:00");
       setFinDescanso("13:00");
-      setSalida(obtenerSalidaPredeterminada(fecha));
+      setSalida(
+        obtenerSalidaPredeterminada(fecha)
+      );
     }
 
     setCargandoJornada(false);
@@ -336,10 +368,178 @@ export default function DashboardPage() {
     if (error) {
       console.error("ERROR HISTORIAL:", error);
     } else {
-      setHistorial((data ?? []) as JornadaHistorial[]);
+      setHistorial(
+        (data ?? []) as JornadaHistorial[]
+      );
     }
 
     setCargandoHistorial(false);
+  }
+
+  async function comprobarNotificaciones() {
+    if (
+      !("serviceWorker" in navigator) ||
+      !("PushManager" in window) ||
+      !("Notification" in window)
+    ) {
+      setNotificacionesSoportadas(false);
+      return;
+    }
+
+    setNotificacionesSoportadas(true);
+
+    try {
+      const registration =
+        await navigator.serviceWorker.register(
+          "/sw.js"
+        );
+
+      await navigator.serviceWorker.ready;
+
+      const subscription =
+        await registration.pushManager.getSubscription();
+
+      setNotificacionesActivas(
+        Boolean(subscription)
+      );
+    } catch (error) {
+      console.error(
+        "ERROR SERVICE WORKER:",
+        error
+      );
+    }
+  }
+
+  async function activarNotificaciones() {
+    if (!empleado) return;
+
+    setActivandoNotificaciones(true);
+    setMensajeNotificaciones("");
+
+    try {
+      if (
+        !("serviceWorker" in navigator) ||
+        !("PushManager" in window) ||
+        !("Notification" in window)
+      ) {
+        setMensajeNotificaciones(
+          "Este dispositivo no permite notificaciones push."
+        );
+
+        setActivandoNotificaciones(false);
+        return;
+      }
+
+      const permiso =
+        await Notification.requestPermission();
+
+      if (permiso !== "granted") {
+        setMensajeNotificaciones(
+          "No se concedió permiso para las notificaciones."
+        );
+
+        setActivandoNotificaciones(false);
+        return;
+      }
+
+      const vapidPublicKey =
+        process.env
+          .NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+
+      if (!vapidPublicKey) {
+        setMensajeNotificaciones(
+          "Falta configurar la clave pública de notificaciones."
+        );
+
+        setActivandoNotificaciones(false);
+        return;
+      }
+
+      const registration =
+        await navigator.serviceWorker.register(
+          "/sw.js"
+        );
+
+      await navigator.serviceWorker.ready;
+
+      let subscription =
+        await registration.pushManager.getSubscription();
+
+      if (!subscription) {
+        subscription =
+          await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey:
+              urlBase64AUint8Array(
+                vapidPublicKey
+              ),
+          });
+      }
+
+      const subscriptionJSON =
+        subscription.toJSON();
+
+      const p256dh =
+        subscriptionJSON.keys?.p256dh;
+
+      const auth =
+        subscriptionJSON.keys?.auth;
+
+      if (
+        !subscription.endpoint ||
+        !p256dh ||
+        !auth
+      ) {
+        throw new Error(
+          "La suscripción push está incompleta."
+        );
+      }
+
+      const { error } = await supabase
+        .from("push_subscriptions")
+        .upsert(
+          {
+            empleado_id: empleado.id,
+            endpoint: subscription.endpoint,
+            p256dh,
+            auth,
+          },
+          {
+            onConflict: "endpoint",
+          }
+        );
+
+      if (error) {
+        console.error(
+          "ERROR GUARDANDO PUSH:",
+          error
+        );
+
+        setMensajeNotificaciones(
+          "No se pudo registrar este dispositivo."
+        );
+
+        setActivandoNotificaciones(false);
+        return;
+      }
+
+      setNotificacionesActivas(true);
+
+      setMensajeNotificaciones(
+        "Notificaciones activadas correctamente."
+      );
+    } catch (error) {
+      console.error(
+        "ERROR ACTIVANDO NOTIFICACIONES:",
+        error
+      );
+
+      setMensajeNotificaciones(
+        "No se pudieron activar las notificaciones."
+      );
+    } finally {
+      setActivandoNotificaciones(false);
+    }
   }
 
   async function guardarJornada() {
@@ -358,6 +558,7 @@ export default function DashboardPage() {
       setError(
         "La fecha seleccionada no está habilitada."
       );
+
       setGuardando(false);
       return;
     }
@@ -393,12 +594,18 @@ export default function DashboardPage() {
 
     if (guardarError) {
       console.error(guardarError);
-      setError("No se pudo guardar la jornada.");
+
+      setError(
+        "No se pudo guardar la jornada."
+      );
+
       setGuardando(false);
       return;
     }
 
-    setMensaje("Jornada guardada correctamente.");
+    setMensaje(
+      "Jornada guardada correctamente."
+    );
 
     await cargarHistorial();
 
@@ -452,6 +659,52 @@ export default function DashboardPage() {
           </p>
         </div>
 
+        {/* NOTIFICACIONES */}
+        <div className="mb-6 rounded-xl border bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="font-semibold">
+                🔔 Notificaciones
+              </h3>
+
+              <p className="mt-1 text-sm text-gray-500">
+                Recibí un recordatorio para completar tu jornada.
+              </p>
+            </div>
+
+            {notificacionesSoportadas ? (
+              notificacionesActivas ? (
+                <span className="rounded-full bg-green-100 px-4 py-2 text-sm font-semibold text-green-700">
+                  Activadas
+                </span>
+              ) : (
+                <button
+                  onClick={activarNotificaciones}
+                  disabled={
+                    activandoNotificaciones
+                  }
+                  className="rounded-lg bg-blue-700 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
+                >
+                  {activandoNotificaciones
+                    ? "Activando..."
+                    : "Activar notificaciones"}
+                </button>
+              )
+            ) : (
+              <span className="text-sm text-gray-400">
+                No disponibles
+              </span>
+            )}
+          </div>
+
+          {mensajeNotificaciones && (
+            <p className="mt-3 text-sm text-gray-600">
+              {mensajeNotificaciones}
+            </p>
+          )}
+        </div>
+
+        {/* FORMULARIO */}
         <div className="rounded-xl border bg-white p-6 shadow-sm">
           <div className="mb-6">
             <label className="mb-2 block font-medium">
@@ -461,7 +714,9 @@ export default function DashboardPage() {
             <select
               value={fechaSeleccionada}
               onChange={(e) =>
-                setFechaSeleccionada(e.target.value)
+                setFechaSeleccionada(
+                  e.target.value
+                )
               }
               className="w-full rounded-lg border p-3"
             >
@@ -476,8 +731,7 @@ export default function DashboardPage() {
             </select>
 
             <p className="mt-2 text-xs text-gray-400">
-              Solo se muestran los últimos 3 días
-              hábiles.
+              Solo se muestran los últimos 3 días hábiles.
             </p>
           </div>
 
@@ -572,7 +826,9 @@ export default function DashboardPage() {
                       type="time"
                       value={salida}
                       onChange={(e) =>
-                        setSalida(e.target.value)
+                        setSalida(
+                          e.target.value
+                        )
                       }
                       className="w-full rounded-lg border p-3"
                     />
@@ -635,32 +891,45 @@ export default function DashboardPage() {
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="font-semibold">
-                        {formatearFecha(jornada.fecha)}
+                        {formatearFecha(
+                          jornada.fecha
+                        )}
                       </p>
 
                       <p className="mt-1 text-sm text-gray-500">
-                        {nombreEstado(jornada.estado)}
+                        {nombreEstado(
+                          jornada.estado
+                        )}
                       </p>
                     </div>
 
                     <div className="text-right">
-                      {jornada.estado === "trabajado" && (
+                      {jornada.estado ===
+                        "trabajado" && (
                         <>
                           <p className="text-sm font-medium">
-                            {horaCorta(jornada.entrada)}
+                            {horaCorta(
+                              jornada.entrada
+                            )}
                             {" - "}
-                            {horaCorta(jornada.salida)}
+                            {horaCorta(
+                              jornada.salida
+                            )}
                           </p>
 
                           <p className="mt-1 text-sm text-gray-500">
-                            {calcularHoras(jornada)} h
+                            {calcularHoras(
+                              jornada
+                            )}{" "}
+                            h
                           </p>
                         </>
                       )}
                     </div>
                   </div>
 
-                  {jornada.estado === "trabajado" && (
+                  {jornada.estado ===
+                    "trabajado" && (
                     <p className="mt-2 text-xs text-gray-400">
                       Descanso:{" "}
                       {horaCorta(
