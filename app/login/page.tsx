@@ -26,7 +26,7 @@ export default function LoginPage() {
           alt="Zona Ingeniería"
           width={600}
           height={400}
-          className="mb-8 w-72 md:w-80"
+          className="mb-2 w-[430px] md:w-[520px]"
         />
 
         <LoginCard
