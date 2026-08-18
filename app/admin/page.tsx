@@ -120,8 +120,14 @@ export default function AdminPage() {
     setTelefono("");
   }
 
+  async function cerrarSesion() {
+    await supabase.auth.signOut();
+    window.location.href = "/login";
+  }
+
   return (
     <main className="min-h-screen bg-slate-100">
+      {/* HEADER */}
       <header className="border-b bg-white px-6 py-4">
         <div className="mx-auto flex max-w-6xl items-center justify-between">
           <div>
@@ -136,16 +142,37 @@ export default function AdminPage() {
 
           <button
             className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-gray-50"
-            onClick={async () => {
-              await supabase.auth.signOut();
-              window.location.href = "/login";
-            }}
+            onClick={cerrarSesion}
           >
             Cerrar sesión
           </button>
         </div>
       </header>
 
+      {/* NAVEGACIÓN */}
+      <div className="border-b bg-white">
+        <div className="mx-auto flex max-w-6xl gap-2 px-6 py-3">
+          <button
+            onClick={() => {
+              window.location.href = "/admin";
+            }}
+            className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white"
+          >
+            Empleados
+          </button>
+
+          <button
+            onClick={() => {
+              window.location.href = "/admin/jornadas";
+            }}
+            className="rounded-lg border px-4 py-2 text-sm font-semibold hover:bg-gray-50"
+          >
+            Jornadas
+          </button>
+        </div>
+      </div>
+
+      {/* CONTENIDO */}
       <div className="mx-auto max-w-6xl p-6">
         <div className="mb-6 flex items-center justify-between gap-4">
           <div>
@@ -274,7 +301,9 @@ export default function AdminPage() {
                 disabled={guardando}
                 className="rounded-lg bg-blue-700 px-5 py-3 font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {guardando ? "Creando..." : "Crear empleado"}
+                {guardando
+                  ? "Creando..."
+                  : "Crear empleado"}
               </button>
 
               <button
@@ -326,7 +355,9 @@ export default function AdminPage() {
                           : "bg-gray-100 text-gray-500"
                       }`}
                     >
-                      {empleado.activo ? "Activo" : "Inactivo"}
+                      {empleado.activo
+                        ? "Activo"
+                        : "Inactivo"}
                     </span>
 
                     <span className="text-sm capitalize text-gray-500">
