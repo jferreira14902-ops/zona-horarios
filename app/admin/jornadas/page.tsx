@@ -3,6 +3,12 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
+type EmpleadoRelacionado = {
+  nombre: string;
+  apellido: string;
+  cedula: string;
+};
+
 type Jornada = {
   id: string;
   fecha: string;
@@ -11,11 +17,7 @@ type Jornada = {
   fin_descanso: string | null;
   salida: string | null;
   estado: string;
-  empleado: {
-    nombre: string;
-    apellido: string;
-    cedula: string;
-  } | null;
+  empleado: EmpleadoRelacionado[];
 };
 
 export default function JornadasPage() {
@@ -78,6 +80,10 @@ export default function JornadasPage() {
     }
 
     setLoading(false);
+  }
+
+  function obtenerEmpleado(jornada: Jornada) {
+    return jornada.empleado?.[0] ?? null;
   }
 
   function horaCorta(valor: string | null) {
@@ -212,11 +218,13 @@ export default function JornadasPage() {
     ];
 
     jornadas.forEach((jornada) => {
+      const empleado = obtenerEmpleado(jornada);
+
       worksheet.addRow({
         fecha: formatearFecha(jornada.fecha),
-        nombre: jornada.empleado?.nombre ?? "",
-        apellido: jornada.empleado?.apellido ?? "",
-        cedula: jornada.empleado?.cedula ?? "",
+        nombre: empleado?.nombre ?? "",
+        apellido: empleado?.apellido ?? "",
+        cedula: empleado?.cedula ?? "",
         entrada: horaCorta(jornada.entrada),
         inicio_descanso: horaCorta(
           jornada.inicio_descanso
@@ -368,33 +376,13 @@ export default function JornadasPage() {
           <table className="w-full min-w-[900px] text-left">
             <thead className="border-b bg-gray-50">
               <tr>
-                <th className="p-4">
-                  Fecha
-                </th>
-
-                <th className="p-4">
-                  Empleado
-                </th>
-
-                <th className="p-4">
-                  Estado
-                </th>
-
-                <th className="p-4">
-                  Entrada
-                </th>
-
-                <th className="p-4">
-                  Descanso
-                </th>
-
-                <th className="p-4">
-                  Salida
-                </th>
-
-                <th className="p-4">
-                  Horas
-                </th>
+                <th className="p-4">Fecha</th>
+                <th className="p-4">Empleado</th>
+                <th className="p-4">Estado</th>
+                <th className="p-4">Entrada</th>
+                <th className="p-4">Descanso</th>
+                <th className="p-4">Salida</th>
+                <th className="p-4">Horas</th>
               </tr>
             </thead>
 
@@ -418,55 +406,52 @@ export default function JornadasPage() {
                   </td>
                 </tr>
               ) : (
-                jornadas.map((jornada) => (
-                  <tr
-                    key={jornada.id}
-                    className="border-b last:border-b-0"
-                  >
-                    <td className="p-4">
-                      {formatearFecha(
-                        jornada.fecha
-                      )}
-                    </td>
+                jornadas.map((jornada) => {
+                  const empleado = obtenerEmpleado(jornada);
 
-                    <td className="p-4 font-medium">
-                      {jornada.empleado?.nombre}{" "}
-                      {jornada.empleado?.apellido}
-                    </td>
+                  return (
+                    <tr
+                      key={jornada.id}
+                      className="border-b last:border-b-0"
+                    >
+                      <td className="p-4">
+                        {formatearFecha(jornada.fecha)}
+                      </td>
 
-                    <td className="p-4">
-                      {nombreEstado(
-                        jornada.estado
-                      )}
-                    </td>
+                      <td className="p-4 font-medium">
+                        {empleado
+                          ? `${empleado.nombre} ${empleado.apellido}`
+                          : "-"}
+                      </td>
 
-                    <td className="p-4">
-                      {horaCorta(
-                        jornada.entrada
-                      )}
-                    </td>
+                      <td className="p-4">
+                        {nombreEstado(jornada.estado)}
+                      </td>
 
-                    <td className="p-4">
-                      {horaCorta(
-                        jornada.inicio_descanso
-                      )}{" "}
-                      -{" "}
-                      {horaCorta(
-                        jornada.fin_descanso
-                      )}
-                    </td>
+                      <td className="p-4">
+                        {horaCorta(jornada.entrada)}
+                      </td>
 
-                    <td className="p-4">
-                      {horaCorta(
-                        jornada.salida
-                      )}
-                    </td>
+                      <td className="p-4">
+                        {horaCorta(
+                          jornada.inicio_descanso
+                        )}{" "}
+                        -{" "}
+                        {horaCorta(
+                          jornada.fin_descanso
+                        )}
+                      </td>
 
-                    <td className="p-4 font-medium">
-                      {calcularHoras(jornada)}
-                    </td>
-                  </tr>
-                ))
+                      <td className="p-4">
+                        {horaCorta(jornada.salida)}
+                      </td>
+
+                      <td className="p-4 font-medium">
+                        {calcularHoras(jornada)}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
