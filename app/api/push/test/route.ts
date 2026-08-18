@@ -55,7 +55,7 @@ export async function GET() {
           title: "⏰ Recordatorio",
           body:
             `Hola, ${nombre} 👋\n` +
-            "Todavía no registraste tu jornada de hoy.\n\n" +
+            "Todavía no registraste tu jornada de hoy.\n" +
             "Tocá para completarla.",
           url: "/dashboard",
         });
@@ -68,7 +68,11 @@ export async function GET() {
               auth: sub.auth,
             },
           },
-          payload
+          payload,
+          {
+            urgency: "high",
+            TTL: 3600,
+          }
         );
       })
     );

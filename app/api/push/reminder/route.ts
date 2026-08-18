@@ -75,7 +75,11 @@ export async function GET() {
                 auth: dispositivo.auth,
               },
             },
-            payload
+            payload,
+            {
+              urgency: "high",
+              TTL: 3600,
+            }
           );
 
           notificados++;
